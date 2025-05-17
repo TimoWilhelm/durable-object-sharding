@@ -8,12 +8,12 @@
 	"main": "src/index.ts",
 	"compatibility_date": "2025-05-15",
 	"compatibility_flags": ["nodejs_compat"],
+	"assets": {
+		"directory": "dist"
+	},
 	"migrations": [
 		{
-			"new_sqlite_classes": [
-				"UserDurableObject",
-				"ChannelDurableObject"
-			],
+			"new_sqlite_classes": ["UserDurableObject", "ChannelDurableObject"],
 			"tag": "v1"
 		}
 	],
