@@ -5,15 +5,15 @@ import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as schema from './db/schema';
 import migrations from './db/drizzle/migrations.js';
 
-const MAX_SHARDS = 100;
-const DO_KEY = "CHANNEL";
+const MAX_SHARDS = 3;
+const DO_KEY = 'CHANNEL';
 
 export class UserDurableObject extends DurableObject<Env> {
 	private db: DrizzleSqliteDODatabase<typeof schema>;
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
-		this.db = drizzle(this.ctx.storage, { schema, logger: false });
+		this.db = drizzle(this.ctx.storage, { schema, logger: true });
 		this.ctx.blockConcurrencyWhile(async () => {
 			await migrate(this.db, migrations);
 		});
@@ -34,7 +34,11 @@ export class UserDurableObject extends DurableObject<Env> {
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+		console.log(`Received user message: ${message}`);
+
 		const channelResult = await this.db.query.channel.findFirst();
+		console.log('channelResult', channelResult);
+
 		if (channelResult === undefined) {
 			await this.subscribeToChannel();
 		}
@@ -49,32 +53,46 @@ export class UserDurableObject extends DurableObject<Env> {
 	}
 
 	async onChannelMessage(message: ChannelMessage): Promise<void> {
+		console.log(`Received message from channel: ${message.channelId}: ${message.content}`);
+
 		const webSockets = this.ctx.getWebSockets();
 		if (webSockets.length === 0) {
 			await this.unsubscribeFromChannel(message.channelId);
-			this.ctx.storage.deleteAll();
+			// await this.ctx.storage.deleteAll(); // TODO: issue with sqlite migrations
 			return;
 		}
 
 		const channelResult = await this.db.query.channel.findFirst();
 		if (channelResult === undefined || message.channelId !== channelResult.channelId) {
-			console.warn('received message from invalid channel');
+			console.warn('received message from invalid channel', message.channelId, channelResult?.channelId);
 			await this.unsubscribeFromChannel(message.channelId);
 			return;
 		}
 
 		console.log('Received message:', message);
-		// TODO: propagate to clients
+
+		for (const webSocket of webSockets) {
+			try {
+				webSocket.send(JSON.stringify(message));
+			} catch (error) {
+				console.error('Error sending message to WebSocket:', error);
+				await this.handleClose(webSocket);
+			}
+		}
 	}
 
 	private async handleClose(webSocket: WebSocket): Promise<void> {
+		console.log('WebSocket closed');
+		webSocket.close(1011); // ensure websocket is closed
+
 		const webSockets = this.ctx.getWebSockets();
 		if (webSockets.length === 0) {
 			const channelResult = await this.db.query.channel.findFirst();
 			if (channelResult !== undefined) {
+				console.log('Unsubscribing from channel:', channelResult.channelId);
 				await this.unsubscribeFromChannel(channelResult.channelId);
 			}
-			this.ctx.storage.deleteAll();
+			// await this.ctx.storage.deleteAll(); // TODO: issue with sqlite migrations
 		}
 	}
 
@@ -82,9 +100,12 @@ export class UserDurableObject extends DurableObject<Env> {
 		const stub = this.env.CHANNEL_DURABLE_OBJECT.idFromString(channelId);
 		const channel = this.env.CHANNEL_DURABLE_OBJECT.get(stub);
 		await channel.unsubscribe(this.ctx.id.toString());
+		await this.db.delete(schema.channel);
+		console.log(`Unsubscribed from channel: ${channelId}`);
 	}
 
 	private async subscribeToChannel(): Promise<void> {
+		console.log('Subscribing to channel...');
 		const channelResult = await this.db.query.channel.findFirst();
 
 		if (channelResult !== undefined) {
@@ -96,7 +117,8 @@ export class UserDurableObject extends DurableObject<Env> {
 			const stub = this.env.CHANNEL_DURABLE_OBJECT.get(id);
 			const subscribed = await stub.subscribe(this.ctx.id.toString());
 			if (subscribed) {
-				this.db.insert(schema.channel).values({ channelId: id.toString() });
+				await this.db.insert(schema.channel).values({ id: 0, channelId: id.toString() });
+				console.log(`Subscribed to channel: ${id.toString()}`);
 				return;
 			}
 		}

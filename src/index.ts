@@ -5,7 +5,7 @@ export default {
 	async fetch(request, env, ctx): Promise<Response> {
 		const url = new URL(request.url);
 		if (url.pathname === '/ws' && request.headers.get('Upgrade') === 'websocket') {
-			const id: DurableObjectId = env.USER_DURABLE_OBJECT.idFromName('foo');
+			const id: DurableObjectId = env.USER_DURABLE_OBJECT.newUniqueId();
 			const stub = env.USER_DURABLE_OBJECT.get(id);
 			return stub.fetch(request);
 		}
