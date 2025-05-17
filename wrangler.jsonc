@@ -7,10 +7,12 @@
 	"name": "do-sharding",
 	"main": "src/index.ts",
 	"compatibility_date": "2025-05-15",
+	"compatibility_flags": ["nodejs_compat"],
 	"migrations": [
 		{
 			"new_sqlite_classes": [
-				"MyDurableObject"
+				"UserDurableObject",
+				"ChannelDurableObject"
 			],
 			"tag": "v1"
 		}
@@ -18,8 +20,12 @@
 	"durable_objects": {
 		"bindings": [
 			{
-				"class_name": "MyDurableObject",
-				"name": "MY_DURABLE_OBJECT"
+				"class_name": "UserDurableObject",
+				"name": "USER_DURABLE_OBJECT"
+			},
+			{
+				"class_name": "ChannelDurableObject",
+				"name": "CHANNEL_DURABLE_OBJECT"
 			}
 		]
 	},

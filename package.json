@@ -1,15 +1,25 @@
 {
 	"name": "do-sharding",
 	"version": "0.0.0",
+	"type": "module",
 	"private": true,
 	"scripts": {
-		"deploy": "wrangler deploy",
-		"dev": "wrangler dev",
-		"start": "wrangler dev",
-		"cf-typegen": "wrangler types"
+		"dev": "vite dev",
+		"build": "vite build",
+		"deploy": "npm run build && wrangler deploy",
+		"cf-typegen": "wrangler types",
+		"db": "npm-run-all --parallel db:**",
+		"db:durable:channel": "npx drizzle-kit generate --config ./src/durable/Channel/db/drizzle.config.ts",
+		"db:durable:user": "npx drizzle-kit generate --config ./src/durable/User/db/drizzle.config.ts"
 	},
 	"devDependencies": {
+		"@cloudflare/vite-plugin": "^1.2.2",
+		"@types/node": "^22.15.18",
+		"drizzle-kit": "^0.31.1",
+		"drizzle-orm": "^0.43.1",
+		"npm-run-all": "^4.1.5",
 		"typescript": "^5.5.2",
+		"vite": "^6.3.5",
 		"wrangler": "^4.15.2"
 	}
 }
