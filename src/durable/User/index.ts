@@ -4,6 +4,7 @@ import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlit
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as schema from './db/schema';
 import migrations from './db/drizzle/migrations.js';
+import { eq } from 'drizzle-orm';
 
 const MAX_SHARDS = 3;
 const DO_KEY = 'CHANNEL';
@@ -13,7 +14,7 @@ export class UserDurableObject extends DurableObject<Env> {
 
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
-		this.db = drizzle(this.ctx.storage, { schema, logger: true });
+		this.db = drizzle(this.ctx.storage, { schema, logger: false });
 		this.ctx.blockConcurrencyWhile(async () => {
 			await migrate(this.db, migrations);
 		});
@@ -71,14 +72,21 @@ export class UserDurableObject extends DurableObject<Env> {
 
 		console.log('Received message:', message);
 
-		for (const webSocket of webSockets) {
-			try {
-				webSocket.send(JSON.stringify(message));
-			} catch (error) {
-				console.error('Error sending message to WebSocket:', error);
-				await this.handleClose(webSocket);
-			}
-		}
+		await Promise.all(
+			webSockets.map(async (webSocket) => {
+				try {
+					webSocket.send(JSON.stringify(message));
+				} catch (error) {
+					console.error('Error sending message to WebSocket:', error);
+					await this.handleClose(webSocket);
+				}
+			})
+		);
+	}
+
+	async onChannelUnsubscribed(channelId: string): Promise<void> {
+		await this.db.delete(schema.channel).where(eq(schema.channel.channelId, channelId));
+		console.log(`Unsubscribed from channel: ${channelId}`);
 	}
 
 	private async handleClose(webSocket: WebSocket): Promise<void> {
@@ -100,8 +108,6 @@ export class UserDurableObject extends DurableObject<Env> {
 		const stub = this.env.CHANNEL_DURABLE_OBJECT.idFromString(channelId);
 		const channel = this.env.CHANNEL_DURABLE_OBJECT.get(stub);
 		await channel.unsubscribe(this.ctx.id.toString());
-		await this.db.delete(schema.channel);
-		console.log(`Unsubscribed from channel: ${channelId}`);
 	}
 
 	private async subscribeToChannel(): Promise<void> {

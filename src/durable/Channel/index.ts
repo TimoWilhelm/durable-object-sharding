@@ -65,10 +65,18 @@ export class ChannelDurableObject extends DurableObject<Env> {
 		console.log(`Publishing message: ${message.channelId}: ${message.content}`);
 
 		const subscribers = await this.db.query.subscribers.findMany();
-		for (const subscriber of subscribers) {
-			const id = this.env.USER_DURABLE_OBJECT.idFromString(subscriber.durableObjectId);
-			const stub = this.env.USER_DURABLE_OBJECT.get(id);
-			await stub.onChannelMessage(message);
-		}
+
+		await Promise.all(
+			subscribers.map(async (subscriber) => {
+				const id = this.env.USER_DURABLE_OBJECT.idFromString(subscriber.durableObjectId);
+				const stub = this.env.USER_DURABLE_OBJECT.get(id);
+				try {
+					await stub.onChannelMessage(message);
+				} catch (error) {
+					console.error(`Error sending message to ${subscriber.durableObjectId}:`, error);
+					await this.unsubscribe(subscriber.durableObjectId);
+				}
+			})
+		);
 	}
 }
