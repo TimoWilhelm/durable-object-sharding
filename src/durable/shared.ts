@@ -1,5 +1,5 @@
-export interface ChannelMessage {
+export interface PublishMessage {
 	id: string;
-	channelId: string;
+	publisherId: string;
 	content: string;
 }

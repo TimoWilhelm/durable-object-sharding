@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "8bd2d647-30c5-493c-b1bb-74b391af78ca",
+  "id": "e99777d3-c529-45bb-9727-c1a52a1cbed5",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "subscribers": {
@@ -14,8 +14,8 @@
           "notNull": true,
           "autoincrement": true
         },
-        "durable_object_id": {
-          "name": "durable_object_id",
+        "subscriber_id": {
+          "name": "subscriber_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,

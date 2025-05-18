@@ -1,11 +1,11 @@
 import { sql } from 'drizzle-orm';
 import { check, integer, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
-export const channel = sqliteTable(
-	'channel',
+export const publisher = sqliteTable(
+	'publisher',
 	{
 		id: integer('id', { mode: 'number' }).primaryKey(),
-		channelId: text('channel_id').notNull(),
+		publisherId: text('publisher_id').notNull(),
 	},
-	(table) => [check('check_channel_singleton', sql`${table.id} = 0`)]
+	(table) => [check('check_publisher_singleton', sql`${table.id} = 0`)]
 );

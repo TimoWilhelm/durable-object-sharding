@@ -13,19 +13,19 @@
 	},
 	"migrations": [
 		{
-			"new_sqlite_classes": ["UserDurableObject", "ChannelDurableObject"],
+			"new_sqlite_classes": ["SubscriberDurableObject", "PublisherDurableObject"],
 			"tag": "v1"
 		}
 	],
 	"durable_objects": {
 		"bindings": [
 			{
-				"class_name": "UserDurableObject",
-				"name": "USER_DURABLE_OBJECT"
+				"class_name": "SubscriberDurableObject",
+				"name": "DURABLE_SUBSCRIBER"
 			},
 			{
-				"class_name": "ChannelDurableObject",
-				"name": "CHANNEL_DURABLE_OBJECT"
+				"class_name": "PublisherDurableObject",
+				"name": "DURABLE_PUBLISHER"
 			}
 		]
 	},

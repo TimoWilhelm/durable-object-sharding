@@ -1,11 +1,11 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "26cb56d4-a9bd-407e-a2db-0bc036b006b5",
+  "id": "bcac4c95-7366-4f26-9143-56a0f9018c47",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
-    "channel": {
-      "name": "channel",
+    "publisher": {
+      "name": "publisher",
       "columns": {
         "id": {
           "name": "id",
@@ -14,8 +14,8 @@
           "notNull": true,
           "autoincrement": false
         },
-        "channel_id": {
-          "name": "channel_id",
+        "publisher_id": {
+          "name": "publisher_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
@@ -27,9 +27,9 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {
-        "check_channel_singleton": {
-          "name": "check_channel_singleton",
-          "value": "\"channel\".\"id\" = 0"
+        "check_publisher_singleton": {
+          "name": "check_publisher_singleton",
+          "value": "\"publisher\".\"id\" = 0"
         }
       }
     }

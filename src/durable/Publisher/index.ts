@@ -1,5 +1,5 @@
 import { DurableObject } from 'cloudflare:workers';
-import type { ChannelMessage } from '@/durable/shared';
+import type { PublishMessage } from '@/durable/shared';
 import { count, eq } from 'drizzle-orm';
 import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlite';
 import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
@@ -9,7 +9,7 @@ import migrations from './db/drizzle/migrations.js';
 
 const MAX_CONNECTIONS = 2;
 
-export class ChannelDurableObject extends DurableObject<Env> {
+export class PublisherDurableObject extends DurableObject<Env> {
 	private db: DrizzleSqliteDODatabase<typeof schema>;
 
 	constructor(ctx: DurableObjectState, env: Env) {
@@ -30,51 +30,54 @@ export class ChannelDurableObject extends DurableObject<Env> {
 		}
 
 		await this.publish({
-			channelId: this.ctx.id.toString(),
 			id: self.crypto.randomUUID(),
+			publisherId: this.ctx.id.toString(),
 			content: 'ping',
 		});
 		this.ctx.storage.setAlarm(Temporal.Now.instant().add({ seconds: 1 }).epochMilliseconds);
 	}
 
-	async subscribe(durableObjectId: string): Promise<boolean> {
-		const subscribers = await this.db.query.subscribers.findMany();
+	async subscribe(subscriberId: string): Promise<boolean> {
+		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
 
-		if (subscribers.length >= MAX_CONNECTIONS) {
+		if (numSubscribers >= MAX_CONNECTIONS) {
 			console.log(`Max connections reached: ${MAX_CONNECTIONS}`);
 			return false;
 		}
 
-		await this.db.insert(schema.subscribers).values({ durableObjectId });
+		await this.db.insert(schema.subscribers).values({ subscriberId });
 
 		if ((await this.ctx.storage.getAlarm()) === null) {
 			this.ctx.storage.setAlarm(Temporal.Now.instant().add({ seconds: 1 }).epochMilliseconds);
 		}
 
-		console.log(`New subscriber: ${durableObjectId}`);
+		console.log(`New subscriber: ${subscriberId}`);
 
 		return true;
 	}
 
-	async unsubscribe(durableObjectId: string): Promise<void> {
-		await this.db.delete(schema.subscribers).where(eq(schema.subscribers.durableObjectId, durableObjectId));
-		console.log(`Subscriber removed: ${durableObjectId}`);
+	async unsubscribe(subscriberId: string): Promise<void> {
+		await this.db.delete(schema.subscribers).where(eq(schema.subscribers.subscriberId, subscriberId));
+		console.log(`Removed subscriber: ${subscriberId}`);
+		const id = this.env.DURABLE_SUBSCRIBER.idFromString(subscriberId);
+		const stub = this.env.DURABLE_SUBSCRIBER.get(id);
+		await stub.onUnsubscribed(this.ctx.id.toString());
 	}
 
-	private async publish(message: ChannelMessage): Promise<void> {
-		console.log(`Publishing message: ${message.channelId}: ${message.content}`);
+	private async publish(message: PublishMessage): Promise<void> {
+		console.log(`Publishing message: ${message.publisherId}: ${message.content}`);
 
-		const subscribers = await this.db.query.subscribers.findMany();
+		const subscribers = await this.db.query.subscribers.findMany({ columns: { subscriberId: true } });
 
 		await Promise.all(
-			subscribers.map(async (subscriber) => {
-				const id = this.env.USER_DURABLE_OBJECT.idFromString(subscriber.durableObjectId);
-				const stub = this.env.USER_DURABLE_OBJECT.get(id);
+			subscribers.map(async ({ subscriberId }) => {
+				const id = this.env.DURABLE_SUBSCRIBER.idFromString(subscriberId);
+				const stub = this.env.DURABLE_SUBSCRIBER.get(id);
 				try {
-					await stub.onChannelMessage(message);
+					await stub.onMessage(message);
 				} catch (error) {
-					console.error(`Error sending message to ${subscriber.durableObjectId}:`, error);
-					await this.unsubscribe(subscriber.durableObjectId);
+					console.error(`Error sending message to ${subscriberId}:`, error);
+					await this.unsubscribe(subscriberId);
 				}
 			})
 		);
