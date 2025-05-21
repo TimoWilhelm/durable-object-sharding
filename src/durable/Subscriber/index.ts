@@ -15,7 +15,7 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		this.db = drizzle(this.ctx.storage, { schema, logger: false });
-		this.ctx.blockConcurrencyWhile(async () => {
+		void this.ctx.blockConcurrencyWhile(async () => {
 			await migrate(this.db, migrations);
 		});
 	}
@@ -58,7 +58,11 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 		const webSockets = this.ctx.getWebSockets();
 		if (webSockets.length === 0) {
 			await this.unsubscribe(message.publisherId);
-			// await this.ctx.storage.deleteAll(); // TODO: issue with sqlite migrations
+			void this.ctx.blockConcurrencyWhile(async () => {
+				await this.ctx.storage.deleteAlarm();
+				await this.ctx.storage.deleteAll();
+				this.ctx.abort();
+			});
 			return;
 		}
 
@@ -99,7 +103,11 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 				console.log('Unsubscribing from publisher:', publisher.publisherId);
 				await this.unsubscribe(publisher.publisherId);
 			}
-			// await this.ctx.storage.deleteAll(); // TODO: issue with sqlite migrations
+			void this.ctx.blockConcurrencyWhile(async () => {
+				await this.ctx.storage.deleteAlarm();
+				await this.ctx.storage.deleteAll();
+				this.ctx.abort();
+			});
 		}
 	}
 

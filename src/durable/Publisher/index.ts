@@ -15,7 +15,7 @@ export class PublisherDurableObject extends DurableObject<Env> {
 	constructor(ctx: DurableObjectState, env: Env) {
 		super(ctx, env);
 		this.db = drizzle(this.ctx.storage, { schema, logger: false });
-		this.ctx.blockConcurrencyWhile(async () => {
+		void this.ctx.blockConcurrencyWhile(async () => {
 			await migrate(this.db, migrations);
 		});
 	}
@@ -25,7 +25,11 @@ export class PublisherDurableObject extends DurableObject<Env> {
 
 		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
 		if (numSubscribers === 0) {
-			// await this.ctx.storage.deleteAll(); // TODO: issue with sqlite migrations
+			void this.ctx.blockConcurrencyWhile(async () => {
+				await this.ctx.storage.deleteAlarm();
+				await this.ctx.storage.deleteAll();
+				this.ctx.abort();
+			});
 			return;
 		}
 
@@ -62,6 +66,15 @@ export class PublisherDurableObject extends DurableObject<Env> {
 		const id = this.env.DURABLE_SUBSCRIBER.idFromString(subscriberId);
 		const stub = this.env.DURABLE_SUBSCRIBER.get(id);
 		await stub.onUnsubscribed(this.ctx.id.toString());
+
+		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
+		if (numSubscribers === 0) {
+			void this.ctx.blockConcurrencyWhile(async () => {
+				await this.ctx.storage.deleteAlarm();
+				await this.ctx.storage.deleteAll();
+				this.ctx.abort();
+			});
+		}
 	}
 
 	private async publish(message: PublishMessage): Promise<void> {
