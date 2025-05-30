@@ -35,6 +35,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
+		await migrate(this.db, migrations);
+
 		console.log(`Received message: ${message}`);
 
 		const [{ count: numPublishers }] = await this.db.select({ count: count() }).from(schema.publisher);
@@ -45,14 +47,20 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
+		await migrate(this.db, migrations);
+
 		await this.handleClose(ws);
 	}
 
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
+		await migrate(this.db, migrations);
+
 		await this.handleClose(ws);
 	}
 
 	async onMessage(message: PublishMessage): Promise<void> {
+		await migrate(this.db, migrations);
+
 		console.log(`Received message from publisher ${message.publisherId}: ${message.content}`);
 
 		const webSockets = this.ctx.getWebSockets();
@@ -61,7 +69,6 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 			void this.ctx.blockConcurrencyWhile(async () => {
 				await this.ctx.storage.deleteAlarm();
 				await this.ctx.storage.deleteAll();
-				this.ctx.abort();
 			});
 			return;
 		}
@@ -88,6 +95,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async onUnsubscribed(publisherId: string): Promise<void> {
+		await migrate(this.db, migrations);
+
 		await this.db.delete(schema.publisher).where(eq(schema.publisher.publisherId, publisherId));
 		console.log(`Unsubscribed from: ${publisherId}`);
 	}
@@ -106,7 +115,6 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 			void this.ctx.blockConcurrencyWhile(async () => {
 				await this.ctx.storage.deleteAlarm();
 				await this.ctx.storage.deleteAll();
-				this.ctx.abort();
 			});
 		}
 	}

@@ -21,27 +21,27 @@ export class PublisherDurableObject extends DurableObject<Env> {
 	}
 
 	async alarm(alarmInfo?: AlarmInvocationInfo): Promise<void> {
-		console.log('Alarm triggered', alarmInfo);
+		await migrate(this.db, migrations);
 
-		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
-		if (numSubscribers === 0) {
-			void this.ctx.blockConcurrencyWhile(async () => {
-				await this.ctx.storage.deleteAlarm();
-				await this.ctx.storage.deleteAll();
-				this.ctx.abort();
-			});
-			return;
-		}
+		console.log('Alarm triggered', alarmInfo);
 
 		await this.publish({
 			id: self.crypto.randomUUID(),
 			publisherId: this.ctx.id.toString(),
 			content: 'ping',
 		});
+
+		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
+		if (numSubscribers === 0) {
+			await this.ctx.storage.deleteAll();
+			return;
+		}
 		this.ctx.storage.setAlarm(Temporal.Now.instant().add({ seconds: 1 }).epochMilliseconds);
 	}
 
 	async subscribe(subscriberId: string): Promise<boolean> {
+		await migrate(this.db, migrations);
+
 		const [{ count: numSubscribers }] = await this.db.select({ count: count() }).from(schema.subscribers);
 
 		if (numSubscribers >= MAX_CONNECTIONS) {
@@ -61,6 +61,8 @@ export class PublisherDurableObject extends DurableObject<Env> {
 	}
 
 	async unsubscribe(subscriberId: string): Promise<void> {
+		await migrate(this.db, migrations);
+
 		await this.db.delete(schema.subscribers).where(eq(schema.subscribers.subscriberId, subscriberId));
 		console.log(`Removed subscriber: ${subscriberId}`);
 		const id = this.env.DURABLE_SUBSCRIBER.idFromString(subscriberId);
@@ -72,7 +74,6 @@ export class PublisherDurableObject extends DurableObject<Env> {
 			void this.ctx.blockConcurrencyWhile(async () => {
 				await this.ctx.storage.deleteAlarm();
 				await this.ctx.storage.deleteAll();
-				this.ctx.abort();
 			});
 		}
 	}
