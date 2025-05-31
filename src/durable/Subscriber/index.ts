@@ -1,24 +1,15 @@
-import { DurableObject } from 'cloudflare:workers';
 import type { PublishMessage } from '@/durable/shared';
 import { count, eq } from 'drizzle-orm';
-import { type DrizzleSqliteDODatabase, drizzle } from 'drizzle-orm/durable-sqlite';
-import { migrate } from 'drizzle-orm/durable-sqlite/migrator';
 import * as schema from './db/schema';
 import migrations from './db/drizzle/migrations.js';
+import { DrizzleDurableObject } from '@/extension';
 
 const MAX_SHARDS = 3;
 const DO_KEY = 'PUBLISHER';
 
-export class SubscriberDurableObject extends DurableObject<Env> {
-	private db: DrizzleSqliteDODatabase<typeof schema>;
-
-	constructor(ctx: DurableObjectState, env: Env) {
-		super(ctx, env);
-		this.db = drizzle(this.ctx.storage, { schema, logger: false });
-		void this.ctx.blockConcurrencyWhile(async () => {
-			await migrate(this.db, migrations);
-		});
-	}
+export class SubscriberDurableObject extends DrizzleDurableObject<typeof schema, Env> {
+	protected schema = schema;
+	protected migrations = migrations;
 
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
@@ -35,11 +26,10 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer): Promise<void> {
-		await migrate(this.db, migrations);
-
 		console.log(`Received message: ${message}`);
 
-		const [{ count: numPublishers }] = await this.db.select({ count: count() }).from(schema.publisher);
+		const db = await this.getDb();
+		const [{ count: numPublishers }] = await db.select({ count: count() }).from(schema.publisher);
 
 		if (numPublishers === 0) {
 			await this.subscribe();
@@ -47,20 +37,14 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async webSocketClose(ws: WebSocket, code: number, reason: string, wasClean: boolean): Promise<void> {
-		await migrate(this.db, migrations);
-
 		await this.handleClose(ws);
 	}
 
 	async webSocketError(ws: WebSocket, error: unknown): Promise<void> {
-		await migrate(this.db, migrations);
-
 		await this.handleClose(ws);
 	}
 
 	async onMessage(message: PublishMessage): Promise<void> {
-		await migrate(this.db, migrations);
-
 		console.log(`Received message from publisher ${message.publisherId}: ${message.content}`);
 
 		const webSockets = this.ctx.getWebSockets();
@@ -73,7 +57,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 			return;
 		}
 
-		const publisher = await this.db.query.publisher.findFirst({ columns: { publisherId: true } });
+		const db = await this.getDb();
+		const publisher = await db.query.publisher.findFirst({ columns: { publisherId: true } });
 		if (publisher === undefined || message.publisherId !== publisher.publisherId) {
 			console.warn('received message from invalid publisher', message.publisherId, publisher?.publisherId);
 			await this.unsubscribe(message.publisherId);
@@ -95,9 +80,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 	}
 
 	async onUnsubscribed(publisherId: string): Promise<void> {
-		await migrate(this.db, migrations);
-
-		await this.db.delete(schema.publisher).where(eq(schema.publisher.publisherId, publisherId));
+		const db = await this.getDb();
+		await db.delete(schema.publisher).where(eq(schema.publisher.publisherId, publisherId));
 		console.log(`Unsubscribed from: ${publisherId}`);
 	}
 
@@ -107,7 +91,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 
 		const webSockets = this.ctx.getWebSockets();
 		if (webSockets.length === 0) {
-			const publisher = await this.db.query.publisher.findFirst({ columns: { publisherId: true } });
+			const db = await this.getDb();
+			const publisher = await db.query.publisher.findFirst({ columns: { publisherId: true } });
 			if (publisher !== undefined) {
 				console.log('Unsubscribing from publisher:', publisher.publisherId);
 				await this.unsubscribe(publisher.publisherId);
@@ -127,7 +112,8 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 
 	private async subscribe(): Promise<void> {
 		console.log('Subscribing to publisher...');
-		const publisher = await this.db.query.publisher.findFirst({ columns: { publisherId: true } });
+		const db = await this.getDb();
+		const publisher = await db.query.publisher.findFirst({ columns: { publisherId: true } });
 
 		if (publisher !== undefined) {
 			return;
@@ -138,7 +124,7 @@ export class SubscriberDurableObject extends DurableObject<Env> {
 			const stub = this.env.DURABLE_PUBLISHER.get(id);
 			const subscribed = await stub.subscribe(this.ctx.id.toString());
 			if (subscribed) {
-				await this.db.insert(schema.publisher).values({ id: 0, publisherId: id.toString() });
+				await db.insert(schema.publisher).values({ id: 0, publisherId: id.toString() });
 				console.log(`Subscribed to publisher: ${id.toString()}`);
 				return;
 			}

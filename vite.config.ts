@@ -22,7 +22,8 @@ function importAsText(match: RegExp): Plugin {
 }
 
 export default defineConfig({
-	plugins: [importAsText(/\.sql$/i), cloudflare()],
+	plugins: [importAsText(/\.sql$/i),
+		cloudflare()],
 	resolve: {
 		alias: {
 			'@': path.resolve(__dirname, './src'),
